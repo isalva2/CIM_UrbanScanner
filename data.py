@@ -29,8 +29,15 @@ def read_fishnet(verbose=False) -> List[GeoDataFrame]|Dict[str,GeoDataFrame]:
     """
     data_path = Path("data/fishnet")
     file_paths = list(sorted(data_path.glob("*.shp")))
-    print(len(file_paths))
     if verbose:
         return {file.name:gpd.read_file(file) for file in file_paths}
     else:
         return [gpd.read_file(file) for file in file_paths]
+
+def read_drove_on() -> GeoDataFrame:
+    data_path = Path("data/DroveOn100mRoad/DroveOn100mRoad.shp")
+    return gpd.read_file(data_path)
+
+def read_r3() -> DataFrame:
+    data_path = Path("data/r3File_Merge1.csv")
+    return pd.read_csv(data_path)
