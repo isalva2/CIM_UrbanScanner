@@ -32,7 +32,7 @@ A Physics-Informed Neural Network (PINN) is a type of neural network that incorp
 
 In this project, we use a PINN to model the spread of nitrogen dioxide ($\text{NO}_2$) in an urban area using the convection-diffusion equation. This PDE captures both the diffusive behavior of the pollutant and its transport due to wind fields. The network is trained to predict pollution concentration and wind velocities across space and time, while minimizing both data discrepancy and the residual of the convection-diffusion equation. This allows the model to interpolate physical behavior and maintain consistency with the underlying dynamics of air pollution transport.
 
-The paper “Phy-APMR: A Physics-Informed Air Pollution Map Reconstruction Approach with Mobile Crowd-Sensing for Fine-Grained Measurement” by Shi et al. introduces a hybrid framework that integrates physical pollution diffusion models with neural networks to reconstruct detailed urban air pollution maps from sparse, mobile sensor data. By embedding physics-based constraints and using an adaptive collocation sampling method, the model improves both accuracy and computational efficiency compared to purely data-driven approaches. We can apply this concept to our project by incorporating physics-informed learning to strengthen model reliability in data-sparse areas and enable continuous, efficient updates to our environmental mapping system.
+The paper “Phy-APMR: A Physics-Informed Air Pollution Map Reconstruction Approach with Mobile Crowd-Sensing for Fine-Grained Measurement” by Shi et al. introduces a hybrid framework that integrates physical pollution diffusion models with neural networks to reconstruct detailed urban air pollution maps from sparse, mobile sensor data. By embedding physics-based constraints and using an adaptive collocation sampling method, the model improves both accuracy and computational efficiency compared to purely data-driven approaches. We can apply this concept to our project by incorporating the model architecture, and improved upon the PDE formulation the authors originally proposed.
 
 ### Convection-Diffusion Equation of Air Pollution Propogation
 
@@ -78,7 +78,7 @@ $$
 
 ## Implementation Details
 
-The input to the model is comprised of a training set $T_D$ and collocation trainin set $T_f$. For $T_D$, the variables, their descriptions, and requisite data sources are summarized in the table below:
+The input to the model is comprised of a training set $T_D$ and collocation training set $T_f$. For $T_D$, the variables, their descriptions, and requisite data sources are summarized in the table below:
 
 | Variable | Unit | Description | Source |
 |-|-|-|-|
@@ -105,13 +105,74 @@ Because the sensor platform did not collect readings continuously across all hou
 
 ## Modeling Results
 
+Below is a summary of the trained models input data, preprocessing methods and statistics, hyperparameters, and model architecture.
+
+```
+2025-10-16 11:37:48,769 | INFO     | Logging to: run/model-2025-10-16_11-37/train.log
+2025-10-16 11:37:50,352 | INFO     | === Pollution Data Summary ===
+2025-10-16 11:37:50,352 | INFO     | Total rows: 2,957
+2025-10-16 11:37:50,352 | INFO     | Columns: ['r3_key', 'x_meter', 'y_meter', 'hour', 'NO2', 'wind_x', 'wind_y', 'S']
+2025-10-16 11:37:50,352 | INFO     | Feature ranges (original scale):
+2025-10-16 11:37:50,352 | INFO     | x_meter    min=293725.476  max=335018.683  mean=313422.626
+2025-10-16 11:37:50,352 | INFO     | y_meter    min=4827214.793  max=4856777.060  mean=4842647.635
+2025-10-16 11:37:50,353 | INFO     | hour       min=     9.467  max=    19.017  mean=    12.102
+2025-10-16 11:37:50,353 | INFO     | NO2        min=     0.001  max=     0.068  mean=     0.022
+2025-10-16 11:37:50,353 | INFO     | wind_x     min=   -26.531  max=    26.750  mean=    -2.050
+2025-10-16 11:37:50,353 | INFO     | wind_y     min=   -30.736  max=    30.390  mean=    -2.164
+2025-10-16 11:37:50,353 | INFO     | S          min=     0.000  max=     0.000  mean=     0.000
+2025-10-16 11:37:50,353 | INFO     | Preprocessed:
+2025-10-16 11:37:50,353 | INFO     | Train samples: 1,478
+2025-10-16 11:37:50,353 | INFO     | Test samples:  1,479
+2025-10-16 11:37:50,353 | INFO     | Collocation pts: 20,000
+2025-10-16 11:37:50,353 | INFO     | Scaling: on
+2025-10-16 11:37:50,353 | INFO     | Device: mps
+2025-10-16 11:37:50,353 | INFO     | --- Verbose Info ---
+2025-10-16 11:37:50,353 | INFO     | Tensor shapes:
+2025-10-16 11:37:50,353 | INFO     | xyt   : (1478, 3)
+2025-10-16 11:37:50,353 | INFO     | D     : (1478, 1)
+2025-10-16 11:37:50,354 | INFO     | u     : (1478, 1)
+2025-10-16 11:37:50,354 | INFO     | v     : (1478, 1)
+2025-10-16 11:37:50,354 | INFO     | S     : (1478, 1)
+2025-10-16 11:37:50,356 | INFO     | Scaled input ranges:
+2025-10-16 11:37:50,356 | INFO     | x-scaled  min=  0.0023  max=  0.9837
+2025-10-16 11:37:50,356 | INFO     | y-scaled  min=  0.0194  max=  0.9900
+2025-10-16 11:37:50,356 | INFO     | t-scaled  min=  0.0000  max=  1.0000
+2025-10-16 11:37:50,356 | INFO     | Original output feature min/max:
+2025-10-16 11:37:50,356 | INFO     | D  : min=  0.0014, max=  0.0683
+2025-10-16 11:37:50,356 | INFO     | u  : min=-26.5307, max= 26.7501
+2025-10-16 11:37:50,356 | INFO     | v  : min=-30.7360, max= 30.3896
+2025-10-16 11:37:50,357 | INFO     | Scaled S range:
+2025-10-16 11:37:50,357 | INFO     | S-scaled  min=  0.0000  max=  0.0000
+2025-10-16 11:37:50,357 | INFO     | ==============================
+2025-10-16 11:37:50,357 | INFO     | NN Layers:[3, 30, 30, 30, 30, 3]
+2025-10-16 11:37:51,170 | INFO     | ============================================================
+2025-10-16 11:37:51,171 | INFO     | Training PINN Model
+2025-10-16 11:37:51,171 | INFO     | ============================================================
+2025-10-16 11:37:51,171 | INFO     | Device:            mps
+2025-10-16 11:37:51,171 | INFO     | Epochs:            2500
+2025-10-16 11:37:51,171 | INFO     | Learning rate:     0.001
+2025-10-16 11:37:51,171 | INFO     | Print interval:    500
+2025-10-16 11:37:51,171 | INFO     | Diffusion coeff K: 0.5
+2025-10-16 11:37:51,171 | INFO     | λ_D=10.0, λ_u=10.0, λ_v=10.0, λ_f=0.1
+2025-10-16 11:37:51,171 | INFO     | ------------------------------------------------------------
 ```
 
 
-```
+The following figure is an overview of the data loss and PDE residual loss given in mean square error (MSE). While physical loss components and total model loss decreased, PDE residuals were stable after the initial 500 epochs.
+
+<img src="figs/training.png" alt="Description" width="800">
+
+Comparison between predicted and actual NO2 was suitable at r=0.768. However, the model failed to capture the behavior of wind components u and v.
+
+<img src="figs/correlation.png" alt="Description" width="800">
+
+Some insight into the performance of the model is the contribution of concentration loss, D, wind losses u and v, and physical PDE residual $\hat{f}$.
+
+<img src="figs/contribution.png" alt="Description" width="500">
+
+## Limitations
+- Model failed to capture a realistic wind field representation of the model area. This can most likely be attributed to three factors; (1) lack of hyperparameter tuning, (2) Exclusion of boundary conditons along analysis area edge, (3) Incorrect conversions between ML "model space" and "physical space" when computing the Convection-Diffusion equation.
+- Static assumptions for coefficient of diffusion, no ground effect
 
 
-The following figure is an overview of the data loss and PDE residual loss given in mean square error (MSE).
-<img src="figs/training.png" alt="Description" width="600">
-<img src="figs/correlation.png" alt="Description" width="600">
 
