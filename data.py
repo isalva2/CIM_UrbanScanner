@@ -40,4 +40,6 @@ def read_drove_on() -> GeoDataFrame:
 
 def read_r3() -> DataFrame:
     data_path = Path("data/r3File_Merge1.csv")
-    return pd.read_csv(data_path)
+    df = pd.read_csv(data_path)
+    df.reset_index(names="r3_key", inplace=True)
+    return df
