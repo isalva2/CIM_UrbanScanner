@@ -24,23 +24,15 @@ CIM_UrbanScanner
 
 The data folder contains the project data in the exact folder structure provided. Python files at the top level will be the main working documents, and the notebooks folder contains jupyter notebooks for personal use and data exploration.
 
-## TODO
-- Set up a template for plots and maps
-- Spatial join `GISRoadWith4Samples.csv` with fishnet shapefiles
-- Read through GIS variables data dictionary and identify target, input, and other pertient variables for prediction and static input to model
-- Exploratory data analysis on GIS variable data (Chloropleth maps and box plots)
-- Analysis on AADT and correlation between traffic volumes and pollutants
--
-- Select and finalize model architecture
-
-## Model Description
-
 ### Physics-Informed Neural Networks (PINNs)
 
 A Physics-Informed Neural Network (PINN) is a type of neural network that incorporates known physical laws, typically in the form of partial differential equations (PDEs), directly into the training objective. Rather than relying entirely on supervised data, PINNs use these governing equations to constrain the model and guide learning in regions where data may be sparse or noisy.
 
+<img src="figs/PINN.png" alt="Description" width="800">
+
 In this project, we use a PINN to model the spread of nitrogen dioxide ($\text{NO}_2$) in an urban area using the convection-diffusion equation. This PDE captures both the diffusive behavior of the pollutant and its transport due to wind fields. The network is trained to predict pollution concentration and wind velocities across space and time, while minimizing both data discrepancy and the residual of the convection-diffusion equation. This allows the model to interpolate physical behavior and maintain consistency with the underlying dynamics of air pollution transport.
-Physics Informed Nueral Networks (PINN) are an extension of
+
+The paper “Phy-APMR: A Physics-Informed Air Pollution Map Reconstruction Approach with Mobile Crowd-Sensing for Fine-Grained Measurement” by Shi et al. introduces a hybrid framework that integrates physical pollution diffusion models with neural networks to reconstruct detailed urban air pollution maps from sparse, mobile sensor data. By embedding physics-based constraints and using an adaptive collocation sampling method, the model improves both accuracy and computational efficiency compared to purely data-driven approaches. We can apply this concept to our project by incorporating physics-informed learning to strengthen model reliability in data-sparse areas and enable continuous, efficient updates to our environmental mapping system.
 
 ### Convection-Diffusion Equation of Air Pollution Propogation
 
@@ -99,8 +91,27 @@ $D$ | PPM | $\text{NO}_2$ concentration | `r3File_Merge1.csv`
 
 For the collocation training set $T_f$, we randomly sample 1000 collocation points from the `fishnet.shp`
 
+
+
 ## Source Emission Concentration
 
 To obtain the spatially and temporally resolved source emission term S(x,y,t) for nitrogen dioxide (NO₂), the raw mobile sensing data were first processed and mapped onto the spatial analysis grid. The original reading dataset contained instantaneous NO₂ readings associated with latitude–longitude coordinates of sensours which reads emission concentarion  and timestamps. These readings were projected into the same coordinate reference system as the 100×100 m fishnet grid and spatially joined so that each measurement was assigned to the grid cell in which it occurred. The timestamp of each observation was decomposed into a date and an hourly component to enable temporal aggregation. Within each cell and day, multiple measurements recorded during the same hour were combined into a single hourly value, representing the total (or mean) NO₂ concentration for that spatial–temporal unit. This procedure produced a dataset of observed hourly NO₂ concentrations for every grid cell and day covered by the mobile campaign.
 
+<img src="figs/road.png" alt="Description" width="600">
+
 Because the sensor platform did not collect readings continuously across all hours, many grid cells had gaps in their hourly coverage. To reconstruct a continuous diurnal pattern while avoiding unrealistic extrapolation, we performed a cell-wise temporal interpolation constrained to the observed hour window of each cell. Specifically, for each grid cell the earliest and latest observed hours were identified, and linear interpolation was applied only within this interval to fill missing intermediate hours. Hours lying outside the observed range were left undefined. This approach preserved the integrity of the measured data while yielding a smooth and physically plausible hourly emission profile consistent with the temporal extent of actual observations. The interpolated hourly averages were then treated as the zone-level emission field S(x,y,t). The resulting tables serve as the spatiotemporal source input for the Physics-Informed Neural Network model that estimates and constrains pollutant dynamics through the convection–diffusion equation residual.
+
+<img src="figs/source.png" alt="Description" width="600">
+
+## Modeling Results
+
+```
+
+
+```
+
+
+The following figure is an overview of the data loss and PDE residual loss given in mean square error (MSE).
+<img src="figs/training.png" alt="Description" width="600">
+<img src="figs/correlation.png" alt="Description" width="600">
+
