@@ -45,7 +45,7 @@ def windspeed_decomp_prerocess(df:DataFrame, bias_deg:float = 180.00, temporal_r
 def prepare_training_dataset_metric(
     wind_speed_df:DataFrame,
     fishnet_gdf:GeoDataFrame,
-    analysis_date:str,
+    analysis_date:str="2021-06-09",
     to_model:bool=True,
     ) -> DataFrame:
 
@@ -80,7 +80,7 @@ def prepare_training_dataset_metric(
     else:
         return training_dataset
 
-class DataLoader:
+class PollutionDataLoader:
     def __init__(
         self,
         df: DataFrame,
@@ -91,7 +91,6 @@ class DataLoader:
         test_size=0.5,
         random_state=1
         ):
-        pass
 
         self.n_collocation = n_collocation
         self.device = device
@@ -103,6 +102,9 @@ class DataLoader:
         self.scaler_xyt = MinMaxScaler()
         self.scaler_outputs = MinMaxScaler()
 
+        # numpy rng
+        np.random.seed(random_state)
+
         # data structures
         self.df:DataFrame = df
         self.gdf:GeoDataFrame = gdf
@@ -110,124 +112,199 @@ class DataLoader:
         self.T_D_test = None
         self.T_f = None
 
-        def prepare_data(self):
-            expected_cols = {"r3_key", "x_meter", "y_meter", "hour", "NO2", "wind_x", "wind_y"}
-            missing = expected_cols - set(df.columns)
-            if missing:
-                raise ValueError(f"Missing required columns: {missing}")
+    def prepare_data(self):
+        expected_cols = {"r3_key", "x_meter", "y_meter", "hour", "NO2", "wind_x", "wind_y"}
+        missing = expected_cols - set(self.df.columns)
+        if missing:
+            raise ValueError(f"Missing required columns: {missing}")
 
-            # Add placeholder S if missing
-            if "S" not in df.columns:
-                df["S"] = 0.0
+        # Add placeholder S if missing
+        if "S" not in self.df.columns:
+            self.df["S"] = 0.0
 
-            self.df = df
-            return self
+        self.df = self.df
+        return self
 
-        def preprocess(self):
-            """Normalize and split data into training/test sets."""
-            if self.df is None:
-                raise ValueError("Call load_data() first.")
 
-            # Extract data columns
-            x = self.df["x_meter"].values.reshape(-1, 1)
-            y = self.df["y_meter"].values.reshape(-1, 1)
-            t = self.df["hour"].values.reshape(-1, 1)
-            D = self.df["NO2"].values.reshape(-1, 1)
-            u = self.df["wind_x"].values.reshape(-1, 1)
-            v = self.df["wind_y"].values.reshape(-1, 1)
-            S = self.df["S"].values.reshape(-1, 1)
-            keys = self.df["r3_key"].values.reshape(-1, 1)
+    def preprocess(self):
+        """Normalize and split data into training/test sets."""
+        if self.df is None:
+            raise ValueError("Call load_data() first.")
 
-            xyt = np.hstack((x, y, t))
-            outputs = np.hstack((D, u, v))
+        # generate collocation points and input xyt scaler
+        self._generate_collocation_points_and_xyt_scaler()
 
-            # Fit scalers
-            if self.scale_inputs:
-                xyt_scaled = self.scaler_xyt.fit_transform(xyt)
-            else:
-                xyt_scaled = xyt
-            self.scaler_outputs.fit(outputs)
+        # Extract data columns
+        x = self.df["x_meter"].values.reshape(-1, 1)
+        y = self.df["y_meter"].values.reshape(-1, 1)
+        t = self.df["hour"].values.reshape(-1, 1)
+        D = self.df["NO2"].values.reshape(-1, 1)
+        u = self.df["wind_x"].values.reshape(-1, 1)
+        v = self.df["wind_y"].values.reshape(-1, 1)
+        S = self.df["S"].values.reshape(-1, 1)
+        keys = self.df["r3_key"].values.reshape(-1, 1)
 
-            # --- Robust train/test splitting using indices (avoids long unpacking) ---
-            n = xyt_scaled.shape[0]
-            indices = np.arange(n)
-            train_idx, test_idx = train_test_split(
-                indices, test_size=self.test_size, random_state=self.random_state
-            )
+        xyt = np.hstack((x, y, t))
+        outputs = np.hstack((D, u, v))
 
-            xyt_train = xyt_scaled[train_idx]
-            xyt_test = xyt_scaled[test_idx]
+        # Fit scalers, xyt on entire area from collocation points
+        if self.scale_inputs:
+            xyt_scaled = self.scaler_xyt.transform(xyt)
+        else:
+            xyt_scaled = xyt
+        self.scaler_outputs.fit(outputs)
 
-            D_train = D[train_idx]
-            D_test = D[test_idx]
+        # --- Robust train/test splitting using indices (avoids long unpacking) ---
+        n = xyt_scaled.shape[0]
+        indices = np.arange(n)
+        train_idx, test_idx = train_test_split(
+            indices, test_size=self.test_size, random_state=self.random_state
+        )
 
-            u_train = u[train_idx]
-            u_test = u[test_idx]
+        xyt_train = xyt_scaled[train_idx]
+        xyt_test = xyt_scaled[test_idx]
 
-            v_train = v[train_idx]
-            v_test = v[test_idx]
+        D_train = D[train_idx]
+        D_test = D[test_idx]
 
-            S_train = S[train_idx]
-            S_test = S[test_idx]
+        u_train = u[train_idx]
+        u_test = u[test_idx]
 
-            keys_train = keys[train_idx].squeeze()
-            keys_test = keys[test_idx].squeeze()
+        v_train = v[train_idx]
+        v_test = v[test_idx]
 
-            # Convert to torch tensors
-            self.T_D_train = {
-                "xyt": torch.tensor(xyt_train, dtype=torch.float32, device=self.device),
-                "D": torch.tensor(D_train, dtype=torch.float32, device=self.device),
-                "u": torch.tensor(u_train, dtype=torch.float32, device=self.device),
-                "v": torch.tensor(v_train, dtype=torch.float32, device=self.device),
-                "S": torch.tensor(S_train, dtype=torch.float32, device=self.device),
-                "r3_key": torch.tensor(keys_train.squeeze(), dtype=torch.int64, device=self.device),
-            }
+        S_train = S[train_idx]
+        S_test = S[test_idx]
 
-            self.T_D_test = {
-                "xyt": torch.tensor(xyt_test, dtype=torch.float32, device=self.device),
-                "D": torch.tensor(D_test, dtype=torch.float32, device=self.device),
-                "u": torch.tensor(u_test, dtype=torch.float32, device=self.device),
-                "v": torch.tensor(v_test, dtype=torch.float32, device=self.device),
-                "S": torch.tensor(S_test, dtype=torch.float32, device=self.device),
-                "r3_key": torch.tensor(keys_test.squeeze(), dtype=torch.int64, device=self.device),
-            }
+        keys_train = keys[train_idx].squeeze()
+        keys_test = keys[test_idx].squeeze()
 
-        def _generate_collocation_points(self):
-            """
-            scale x-y to fishnet
-            """
+        # Convert to torch tensors
+        self.T_D_train = {
+            "xyt": torch.tensor(xyt_train, dtype=torch.float32, device=self.device),
+            "D": torch.tensor(D_train, dtype=torch.float32, device=self.device),
+            "u": torch.tensor(u_train, dtype=torch.float32, device=self.device),
+            "v": torch.tensor(v_train, dtype=torch.float32, device=self.device),
+            "S": torch.tensor(S_train, dtype=torch.float32, device=self.device),
+            "r3_key": torch.tensor(keys_train.squeeze(), dtype=torch.int64, device=self.device),
+        }
 
-            # get centroid and sample from fishnet
-            self.gdf["x"] = self.gdf.geometry.centroid.x
-            self.gdf["y"] = self.gdf.geometry.centroid.y
-            sample_gdf = self.gdf.sample(n=n_collocation, random_state=self.random_state)
+        self.T_D_test = {
+            "xyt": torch.tensor(xyt_test, dtype=torch.float32, device=self.device),
+            "D": torch.tensor(D_test, dtype=torch.float32, device=self.device),
+            "u": torch.tensor(u_test, dtype=torch.float32, device=self.device),
+            "v": torch.tensor(v_test, dtype=torch.float32, device=self.device),
+            "S": torch.tensor(S_test, dtype=torch.float32, device=self.device),
+            "r3_key": torch.tensor(keys_test.squeeze(), dtype=torch.int64, device=self.device),
+        }
 
-            x_f = sample_gdf["x"]
-            y_f = sample_gdf["y"]
+        return self
 
-            # sample t_f from T_D hour distribution
-            hour_dist = self.df.hour.value_counts(normalize=True)
-            t_f = np.random.choice(
-                hour_dist.index,
-                size=self.n_collocation,
-            )
 
-            xyt_f = np.hstack((x_f,y_f,t_f))
+    def _generate_collocation_points_and_xyt_scaler(self):
+        """
+        scale x-y to fishnet
+        """
 
-            # fit scaler to entire fishnet area and from T_D hour distribution
-            x_proj = self.gdf["x"]
-            y_proj = self.gdf["y"]
+        # get centroid and sample from fishnet
+        self.gdf["x"] = self.gdf.geometry.centroid.x
+        self.gdf["y"] = self.gdf.geometry.centroid.y
+        sample_gdf = self.gdf.sample(n=self.n_collocation, random_state=self.random_state)
 
-            hour_dist_proj = self.df
-            t_proj = np.random.choice(
-                hour_dist.index,
-                size=len(self.gdf)
-            )
+        x_f = sample_gdf["x"].values.reshape(-1,1)
+        y_f = sample_gdf["y"].values.reshape(-1,1)
 
-            xyt_proj = np.hstack((x_proj,y_proj,t_proj))
+        # sample t_f from T_D hour distribution
+        hour_dist = self.df.hour.value_counts(normalize=True)
+        t_f = np.random.choice(hour_dist.index, size=self.n_collocation).reshape(-1,1)
 
-            if self.scale_inputs:
-                self.scaler_xyt.fit(xyt_proj)
+        xyt_f = np.hstack((x_f,y_f,t_f))
+
+        # fit scaler to entire fishnet area and from T_D hour distribution
+        x_proj = self.gdf["x"].values.reshape(-1,1)
+        y_proj = self.gdf["y"].values.reshape(-1,1)
+        t_proj = np.random.choice(hour_dist.index, size=len(self.gdf)).reshape(-1,1)
+
+        xyt_proj = np.hstack((x_proj,y_proj,t_proj))
+
+        if self.scale_inputs:
+            self.scaler_xyt.fit(xyt_proj)
+
+        # fit scaler to collocation points
+        if self.scale_inputs:
+            xyt_f = self.scaler_xyt.transform(xyt_f)
+
+        self.T_f = torch.tensor(xyt_f, dtype=torch.float32, device=self.device)
+
+
+    def get_train_test_data(self):
+        if self.T_D_train is None or self.T_D_test is None:
+            raise ValueError("Data not preprocessed. Run preprocess() first.")
+        return self.T_D_train, self.T_D_test, self.T_f
+
+
+    def inverse_scale_predictions(self, D_pred, u_pred, v_pred):
+        out_scaled = np.hstack([
+            D_pred.detach().cpu().numpy(),
+            u_pred.detach().cpu().numpy(),
+            v_pred.detach().cpu().numpy()
+        ])
+        return self.scaler_outputs.inverse_transform(out_scaled)
+
+    def summary(self, verbose=True):
+        """Print a concise summary of the dataset and preprocessing status."""
+        print("=== Pollution Data Summary ===")
+
+        if self.df is None:
+            print("No data loaded yet. Run load_data().")
+            return
+
+        print(f"Total rows: {len(self.df):,}")
+        print(f"Columns: {list(self.df.columns)}\n")
+
+        # Basic statistics
+        print("Feature ranges (original scale):")
+        for col in ["x_meter", "y_meter", "hour", "NO2", "wind_x", "wind_y"]:
+            vals = self.df[col].values
+            print(f"  {col:<10s} min={vals.min():>10.3f}  max={vals.max():>10.3f}  mean={vals.mean():>10.3f}")
+
+        if self.T_D_train is not None:
+            n_train = self.T_D_train["xyt"].shape[0]
+            n_test = self.T_D_test["xyt"].shape[0]
+            print(f"\nPreprocessed:")
+            print(f"  Train samples: {n_train:,}")
+            print(f"  Test samples:  {n_test:,}")
+            print(f"  Collocation pts: {self.n_collocation:,}")
+            print(f"  Scaling: {'on' if self.scale_inputs else 'off'}")
+            print(f"  Device: {self.device}")
+
+            if verbose:
+                    print("\n--- Verbose Info ---")
+                    print("Tensor shapes:")
+                    for k, v in self.T_D_train.items():
+                        if k != "r3_key":
+                            print(f"  {k:<6s}: {tuple(v.shape)}")
+
+                    # Show scaling stats
+                    xyt_scaled = self.T_D_train["xyt"].cpu().numpy()
+                    print("\nScaled input ranges:")
+                    for i, col in enumerate(["x", "y", "t"]):
+                        print(f"  {col}-scaled  min={xyt_scaled[:, i].min():>8.4f}  max={xyt_scaled[:, i].max():>8.4f}")
+
+                    out_minmax = self.scaler_outputs.data_min_, self.scaler_outputs.data_max_
+                    print("\nOriginal output feature min/max:")
+                    for name, mn, mx in zip(["D", "u", "v"], out_minmax[0], out_minmax[1]):
+                        print(f"  {name:<3s}: min={mn:>8.4f}, max={mx:>8.4f}")
+
+                    print("\nSample collocation points (scaled):")
+                    print(self.T_f[:5].cpu().numpy())
+
+        else:
+            print("\nData not yet preprocessed (no train/test tensors).")
+
+        print("==============================\n")
+
+
 
 
 
