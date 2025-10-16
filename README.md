@@ -108,71 +108,82 @@ Because the sensor platform did not collect readings continuously across all hou
 Below is a summary of the trained models input data, preprocessing methods and statistics, hyperparameters, and model architecture.
 
 ```
-2025-10-16 11:37:48,769 | INFO     | Logging to: run/model-2025-10-16_11-37/train.log
-2025-10-16 11:37:50,352 | INFO     | === Pollution Data Summary ===
-2025-10-16 11:37:50,352 | INFO     | Total rows: 2,957
-2025-10-16 11:37:50,352 | INFO     | Columns: ['r3_key', 'x_meter', 'y_meter', 'hour', 'NO2', 'wind_x', 'wind_y', 'S']
-2025-10-16 11:37:50,352 | INFO     | Feature ranges (original scale):
-2025-10-16 11:37:50,352 | INFO     | x_meter    min=293725.476  max=335018.683  mean=313422.626
-2025-10-16 11:37:50,352 | INFO     | y_meter    min=4827214.793  max=4856777.060  mean=4842647.635
-2025-10-16 11:37:50,353 | INFO     | hour       min=     9.467  max=    19.017  mean=    12.102
-2025-10-16 11:37:50,353 | INFO     | NO2        min=     0.001  max=     0.068  mean=     0.022
-2025-10-16 11:37:50,353 | INFO     | wind_x     min=   -26.531  max=    26.750  mean=    -2.050
-2025-10-16 11:37:50,353 | INFO     | wind_y     min=   -30.736  max=    30.390  mean=    -2.164
-2025-10-16 11:37:50,353 | INFO     | S          min=     0.000  max=     0.000  mean=     0.000
-2025-10-16 11:37:50,353 | INFO     | Preprocessed:
-2025-10-16 11:37:50,353 | INFO     | Train samples: 1,478
-2025-10-16 11:37:50,353 | INFO     | Test samples:  1,479
-2025-10-16 11:37:50,353 | INFO     | Collocation pts: 20,000
-2025-10-16 11:37:50,353 | INFO     | Scaling: on
-2025-10-16 11:37:50,353 | INFO     | Device: mps
-2025-10-16 11:37:50,353 | INFO     | --- Verbose Info ---
-2025-10-16 11:37:50,353 | INFO     | Tensor shapes:
-2025-10-16 11:37:50,353 | INFO     | xyt   : (1478, 3)
-2025-10-16 11:37:50,353 | INFO     | D     : (1478, 1)
-2025-10-16 11:37:50,354 | INFO     | u     : (1478, 1)
-2025-10-16 11:37:50,354 | INFO     | v     : (1478, 1)
-2025-10-16 11:37:50,354 | INFO     | S     : (1478, 1)
-2025-10-16 11:37:50,356 | INFO     | Scaled input ranges:
-2025-10-16 11:37:50,356 | INFO     | x-scaled  min=  0.0023  max=  0.9837
-2025-10-16 11:37:50,356 | INFO     | y-scaled  min=  0.0194  max=  0.9900
-2025-10-16 11:37:50,356 | INFO     | t-scaled  min=  0.0000  max=  1.0000
-2025-10-16 11:37:50,356 | INFO     | Original output feature min/max:
-2025-10-16 11:37:50,356 | INFO     | D  : min=  0.0014, max=  0.0683
-2025-10-16 11:37:50,356 | INFO     | u  : min=-26.5307, max= 26.7501
-2025-10-16 11:37:50,356 | INFO     | v  : min=-30.7360, max= 30.3896
-2025-10-16 11:37:50,357 | INFO     | Scaled S range:
-2025-10-16 11:37:50,357 | INFO     | S-scaled  min=  0.0000  max=  0.0000
-2025-10-16 11:37:50,357 | INFO     | ==============================
-2025-10-16 11:37:50,357 | INFO     | NN Layers:[3, 30, 30, 30, 30, 3]
-2025-10-16 11:37:51,170 | INFO     | ============================================================
-2025-10-16 11:37:51,171 | INFO     | Training PINN Model
-2025-10-16 11:37:51,171 | INFO     | ============================================================
-2025-10-16 11:37:51,171 | INFO     | Device:            mps
-2025-10-16 11:37:51,171 | INFO     | Epochs:            2500
-2025-10-16 11:37:51,171 | INFO     | Learning rate:     0.001
-2025-10-16 11:37:51,171 | INFO     | Print interval:    500
-2025-10-16 11:37:51,171 | INFO     | Diffusion coeff K: 0.5
-2025-10-16 11:37:51,171 | INFO     | λ_D=10.0, λ_u=10.0, λ_v=10.0, λ_f=0.1
-2025-10-16 11:37:51,171 | INFO     | ------------------------------------------------------------
+Contents:
+  D_true         : tensor (1479, 1)
+  u_true         : tensor (1479, 1)
+  v_true         : tensor (1479, 1)
+  D_pred         : tensor (1479, 1)
+  u_pred         : tensor (1479, 1)
+  v_pred         : tensor (1479, 1)
+=== Pollution Data Summary ===
+Total rows: 2,957
+Columns: ['r3_key', 'x_meter', 'y_meter', 'hour', 'NO2', 'wind_x', 'wind_y', 'S']
+
+Feature ranges (original scale):
+  x_meter    min=293725.476  max=335018.683  mean=313422.626
+  y_meter    min=4827214.793  max=4856777.060  mean=4842647.635
+  hour       min=     9.467  max=    19.017  mean=    12.102
+  NO2        min=     0.001  max=     0.068  mean=     0.022
+  wind_x     min=   -26.531  max=    26.750  mean=    -2.050
+  wind_y     min=   -30.736  max=    30.390  mean=    -2.164
+  S          min=     0.000  max=     0.000  mean=     0.000
+
+Preprocessed:
+  Train samples: 1,478
+  Test samples:  1,479
+  Collocation pts: 10,000
+  Scaling: on
+  Device: mps
+
+--- Verbose Info ---
+Tensor shapes:
+  xyt   : (1478, 3)
+  D     : (1478, 1)
+  u     : (1478, 1)
+  v     : (1478, 1)
+  S     : (1478, 1)
+
+Scaled input ranges:
+  x-scaled  min=  0.0023  max=  0.9837
+  y-scaled  min=  0.0194  max=  0.9900
+  t-scaled  min=  0.0000  max=  1.0000
+
+Original output feature min/max:
+  D  : min=  0.0014, max=  0.0683
+  u  : min=-26.5307, max= 26.7501
+  v  : min=-30.7360, max= 30.3896
+
+Scaled S range:
+  S-scaled  min=  0.0000  max=  0.0000
+==============================
 ```
 
 
-The following figure is an overview of the data loss and PDE residual loss given in mean square error (MSE). While physical loss components and total model loss decreased, PDE residuals were stable after the initial 500 epochs.
+The total and component losses demonstrate clear convergence behavior, with most of the reduction occurring within the first 500 epochs. While the model successfully minimized data losses for NO₂, the residual PDE term remained stable, reflecting that the physical regularization was well enforced. However, validation losses for the wind components (u, v) remained higher, implying that the model captured pollutant dynamics more effectively than the underlying wind field variability.
 
 <img src="figs/training.png" alt="Description" width="800">
 
-Comparison between predicted and actual NO2 was suitable at r=0.768. However, the model failed to capture the behavior of wind components u and v.
+The predictions for wind components u and v showed very low correlations (r = 0.033 and r = 0.170), with outputs clustering around zero. This indicates that the model struggled to represent the variability of horizontal wind motion, likely due to limited meteorological input features or insufficient coupling between the physical and data-driven components.
 
 <img src="figs/correlation.png" alt="Description" width="800">
 
-Some insight into the performance of the model is the contribution of concentration loss, D, wind losses u and v, and physical PDE residual $\hat{f}$.
+Some insight into the performance of the model is the contribution of concentration loss, D, wind losses u and v, and physical PDE residual $\hat{f}$. The physics informs the model, not enforces it, so the right balance between lossess is critical for model performance.
 
 <img src="figs/contribution.png" alt="Description" width="500">
 
 ## Limitations
 - Model failed to capture a realistic wind field representation of the model area. This can most likely be attributed to three factors; (1) lack of hyperparameter tuning, (2) Exclusion of boundary conditons along analysis area edge, (3) Incorrect conversions between ML "model space" and "physical space" when computing the Convection-Diffusion equation.
-- Static assumptions for coefficient of diffusion, no ground effect
+- Static assumptions for coefficient of diffusion, no ground effects from terrain or buildings, did not take into account humidity or pressure.
+- No boundary conditions along edge of analysis area. Without boundary conditions, data points at the edge of the model are free to take on arbitrary values, typically those most conducive to smooth, laminar flow.
 
+## Contributions
+- The second application of PINN model at the regional/city scale utilizing mobile pollution sensor data.`
+- Improvement on the Phy-APMR framework by including source emmission effects excluded in the original formulation.
 
+## Future work
+Future work will focus on:
+- Incorporating boundary and initial conditions explicitly within the PDE formulation.
+- Introducing spatially variable diffusion coefficients to better capture local turbulence.
+- Expanding the dataset to include meteorological and topographic predictors such as temperature, humidity, and surface roughness.
+- Performing hyperparameter optimization and ablation studies to improve stability and convergence.
 
