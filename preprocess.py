@@ -10,31 +10,46 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 
 
-def windspeed_decomp_preprocess(df:DataFrame, bias_deg:float = 180.00, temporal_resolution:str="hour"):
+def windspeed_decomp_preprocess(df: pd.DataFrame, temporal_resolution: str = "hour") -> pd.DataFrame:
+    """
+    Preprocess wind data for projected CRS (x = east, y = north).
 
-    # columns match `r3File_Merge1.csv`
-    magnitude_col = "WS"
-    direction_col = "WD"
+    Converts meteorological 'from' direction (0°=N, 90°=E) into vector components (u,v)
+    compatible with Cartesian coordinates.
 
-    # copy df, filter, and convert timestamp
+    Args:
+        df (pd.DataFrame): Input DataFrame containing 'WS', 'WD', 'Timestamp', 'Lat1', 'Long1', 'Temp', 'RH'.
+        temporal_resolution (str): Temporal granularity ('hour' supported).
+
+    Returns:
+        pd.DataFrame: Cleaned DataFrame with added 'wind_x', 'wind_y', and 'hour'.
+    """
     df = df.copy()
+
+    # --- Validate input ---
+    required_cols = {"WS", "WD", "Timestamp", "Lat1", "Long1", "Temp", "RH"}
+    missing = required_cols - set(df.columns)
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
+
+    # --- Filter invalid data ---
     df = df[
-        (df.Lat1 > 0.0) & # northen hemisphere
-        (df.Long1 < 0.0) & # western hemisphere
-        (df[direction_col] > 0.0) &
-        (df.Temp > -35.00) &
-        (df.RH > 0.0) &
-        (df.RH < 100.0)
-    ]
+        (df["Lat1"] > 0.0) &
+        (df["Long1"] < 0.0) &
+        (df["WD"].between(0.0, 360.0)) &
+        (df["Temp"] > -35.0) &
+        (df["RH"].between(0.0, 100.0))
+    ].copy()
+
+    # --- Parse timestamps ---
     df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors="coerce")
-    df.dropna(subset=['Timestamp'], inplace=True)
+    df.dropna(subset=["Timestamp"], inplace=True)
 
-    # decompose wind speed
-    bias_rad = np.radians(bias_deg)
-    df["direction_rad"] = np.radians(df[direction_col]) + bias_rad
-
-    df["wind_x"] = df[magnitude_col] * np.sin(df["direction_rad"])
-    df["wind_y"] = df[magnitude_col] * np.cos(df["direction_rad"])
+    # --- Convert wind direction to radians ---
+    # Convert "from" direction (meteorological) to "toward" direction (Cartesian)
+    direction_math = np.radians(270.0 - df["WD"])
+    df["wind_x"] = df["WS"] * np.cos(direction_math)
+    df["wind_y"] = df["WS"] * np.sin(direction_math)
 
     # add temporal resolution
     if temporal_resolution=="hour":
@@ -54,14 +69,14 @@ def prepare_training_dataset_metric(
     # copy and filter to analysis date
     training_dataset = wind_speed_df.copy()
 
-    # attache source df to training dataset we will need to fix this eventually
-    keyed_source = pd.merge(left=S_df, right=key_df[["Id", "id_1"]], on="id_1")
-    training_dataset = pd.merge(left=training_dataset, right=keyed_source, on=["Id", "hour"], how="left")
-    training_dataset.drop_duplicates(inplace=True)
-    training_dataset.dropna(inplace=True)
-    training_dataset["S"] = training_dataset["S"]
+    # # attache source df to training dataset we will need to fix this eventually
+    # keyed_source = pd.merge(left=S_df, right=key_df[["Id", "id_1"]], on="id_1")
+    # training_dataset = pd.merge(left=training_dataset, right=keyed_source, on=["Id", "hour"], how="left")
+    # training_dataset.drop_duplicates(inplace=True)
+    # training_dataset.dropna(inplace=True)
+    # training_dataset["S"] = training_dataset["S"]
 
-    # training_dataset["S"] = 0.0
+    training_dataset["S"] = 0.0
 
     if analysis_date is not None:
         target_date = pd.to_datetime(analysis_date).date()
@@ -81,6 +96,9 @@ def prepare_training_dataset_metric(
     # get centroid
     training_dataset["x_meter"] = training_dataset.geometry.centroid.x
     training_dataset["y_meter"] = training_dataset.geometry.centroid.y
+
+    # add minute resolution to hour
+    training_dataset["hour"] = training_dataset["hour"] + training_dataset["Timestamp"].dt.minute / 60.0
 
     # filter relevant columns
     columns_keep = [left_on, "Timestamp", "Lat1", "Long1", "WS", "r3_key", "x_meter", "y_meter", "hour", "NO2", "wind_x", "wind_y", "S"]
@@ -315,9 +333,6 @@ class CDiffDataLoader:
                     S_scaled = self.T_D_train["S"].cpu().numpy()
                     print("\nScaled S range:")
                     print(f"  S-scaled  min={S_scaled.min():>8.4f}  max={S_scaled.max():>8.4f}")
-
-                    print("\nSample collocation points (scaled):")
-                    print(self.T_f[:5].cpu().numpy())
 
             else:
                 print("\nData not yet preprocessed (no train/test tensors).")

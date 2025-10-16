@@ -12,19 +12,16 @@ class Sin(nn.Module):
         return torch.sin(x)
 
 
-def build_mlp(layer_sizes, activation=Sin()):
+def build_mlp(layer_sizes, activation=Sin):
     layers = []
     for i in range(len(layer_sizes)-1):
         layers.append(nn.Linear(layer_sizes[i], layer_sizes[i+1]))
         if i < len(layer_sizes)-2:  # no activation after last layer
-            layers.append(activation)
+            layers.append(activation())
     return nn.Sequential(*layers)
 
 class PINN(nn.Module):
-    def __init__(self, layers, activation=Sin()):
-        """
-        layers: list of ints, e.g. [3, 128, 128, 64, 3]  -> input 3, output 3
-        """
+    def __init__(self, layers, activation=Sin):
         super().__init__()
         self.net = build_mlp(layers, activation=activation)
 
@@ -34,14 +31,6 @@ class PINN(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
-
-
-    def forward(self, x):
-        """Forward pass for PINN model."""
-        for i in range(len(self.layers) - 1):
-            x = self.activation(self.layers[i](x))
-        x = self.layers[-1](x)  # No activation at the output
-        return x
 
 
     def forward(self, x):
@@ -59,11 +48,11 @@ class PINN(nn.Module):
 class PINNLoss:
     def __init__(
         self,
-        K=1e-3,
-        lambda_D=1.0,
-        lambda_u=1.0,
-        lambda_v=1.0,
-        lambda_f=1.0,
+        K,
+        lambda_D,
+        lambda_u,
+        lambda_v,
+        lambda_f,
         device="cpu"
     ):
         self.K = K  # Diffusion coefficient
@@ -81,7 +70,7 @@ class PINNLoss:
 
         If S is None assumes source-free PDE (for collocation points).
         """
-        xyt.requires_grad_(True)
+        xyt = xyt.clone().detach().to(self.device).requires_grad_(True)
         D, u, v = model.predict_fields(xyt)
 
         # Compute gradients
@@ -150,7 +139,8 @@ class PINNLoss:
         loss_v = torch.mean((v_pred - v_data) ** 2)
 
         # PDE loss (combine data + collocation)
-        loss_f = 0.5 * (torch.mean(f_data ** 2) + torch.mean(f_colloc ** 2))
+        # loss_f = 0.5 * (torch.mean(f_data ** 2) + torch.mean(f_colloc ** 2))
+        loss_f = torch.mean(f_colloc ** 2)
 
         # Total weighted loss
         total = (
@@ -163,200 +153,157 @@ class PINNLoss:
         return total, (loss_D, loss_u, loss_v, loss_f)
 
 
-def train(
-    model,
-    data_loader,
-    loss_fn,
-    n_epochs=5000,
-    lr=1e-3,
-    print_every=500,
-    scales=None,
-    device="cpu"
-):
-    """
-    Train the PINN model using Adam optimizer with data and PDE residual losses.
-    Tracks validation losses (including PDE residual), saves best and final model weights,
-    full training history, test predictions, and all console output to a log file.
-    """
+# def train(
+#     model,
+#     data_loader,
+#     loss_fn,
+#     n_epochs=5000,
+#     lr=1e-3,
+#     print_every=500,
+#     scales=None,
+#     device="cpu",
+#     save_dir=None,  # <-- now passed from run.py
+# ):
+#     """
+#     Train the PINN model using Adam optimizer with data and PDE residual losses.
+#     Returns full training history.
+#     """
 
-    # === Load preprocessed tensors ===
-    T_D_train, T_D_test, T_f = data_loader.get_train_test_data()
+#     # === Load preprocessed tensors ===
+#     T_D_train, T_D_test, T_f = data_loader.get_train_test_data()
 
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    history = {
-        "total": [], "D": [], "u": [], "v": [], "f": [],
-        "val_total": [], "val_D": [], "val_u": [], "val_v": [], "val_f": []
-    }
+#     optimizer = optim.Adam(model.parameters(), lr=lr)
+#     history = {
+#         "total": [], "D": [], "u": [], "v": [], "f": [],
+#         "val_total": [], "val_D": [], "val_u": [], "val_v": [], "val_f": []
+#     }
 
-    model.to(device)
-    model.train()
+#     model.to(device)
+#     model.train()
 
-    # === Setup run directory ===
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    save_dir = os.path.join("run", f"model-{timestamp}")
-    os.makedirs(save_dir, exist_ok=True)
-    log_path = os.path.join(save_dir, "train_log.txt")
+#     if save_dir is None:
+#         save_dir = "run/temp"
+#     os.makedirs(save_dir, exist_ok=True)
 
-    # Redirect stdout to both console and log file
-    class Logger(object):
-        def __init__(self, filename):
-            self.terminal = sys.stdout
-            self.log = open(filename, "a", buffering=1)
-        def write(self, message):
-            self.terminal.write(message)
-            self.log.write(message)
-        def flush(self):
-            pass
+#     best_val_loss = float("inf")
+#     best_epoch = 0
 
-    sys.stdout = Logger(log_path)
+#     print("=" * 60)
+#     print("Training PINN Model")
+#     print("=" * 60)
+#     print(f"Device:            {device}")
+#     print(f"Epochs:            {n_epochs}")
+#     print(f"Learning rate:     {lr}")
+#     print(f"Print interval:    {print_every}")
+#     print(f"Diffusion coeff K: {loss_fn.K}")
+#     print(f"λ_D={loss_fn.lambda_D}, λ_u={loss_fn.lambda_u}, λ_v={loss_fn.lambda_v}, λ_f={loss_fn.lambda_f}")
+#     print("-" * 60)
+#     print(f"Train samples:     {T_D_train['xyt'].shape[0]}")
+#     print(f"Test samples:      {T_D_test['xyt'].shape[0]}")
+#     print(f"Collocation pts:   {T_f.shape[0]}")
+#     print(f"Run directory:     {save_dir}")
+#     print("=" * 60, "\n")
 
-    # === Training summary header ===
-    print("=" * 60)
-    print("Training PINN Model")
-    print("=" * 60)
-    print(f"Device:            {device}")
-    print(f"Epochs:            {n_epochs}")
-    print(f"Learning rate:     {lr}")
-    print(f"Print interval:    {print_every}")
-    print(f"Diffusion coeff K: {loss_fn.K}")
-    print(f"λ_D={loss_fn.lambda_D}, λ_u={loss_fn.lambda_u}, λ_v={loss_fn.lambda_v}, λ_f={loss_fn.lambda_f}")
-    print("-" * 60)
-    print(f"Train samples:     {T_D_train['xyt'].shape[0]}")
-    print(f"Test samples:      {T_D_test['xyt'].shape[0]}")
-    print(f"Collocation pts:   {T_f.shape[0]}")
-    print(f"Run directory:     {save_dir}")
-    print("=" * 60, "\n")
+#     pbar = trange(n_epochs, desc="Training PINN", leave=True)
+#     for epoch in pbar:
+#         optimizer.zero_grad()
 
-    best_val_loss = float("inf")
-    best_epoch = 0
+#         total_loss, (loss_D, loss_u, loss_v, loss_f) = loss_fn.total_loss(
+#             model,
+#             T_D_train["xyt"],
+#             T_D_train["D"],
+#             T_D_train["u"],
+#             T_D_train["v"],
+#             T_D_train["S"],
+#             T_f,
+#             scales=scales,
+#         )
 
-    # === Training loop ===
-    pbar = trange(n_epochs, desc="Training PINN", leave=True)
-    for epoch in pbar:
-        optimizer.zero_grad()
+#         total_loss.backward()
+#         optimizer.step()
 
-        total_loss, (loss_D, loss_u, loss_v, loss_f) = loss_fn.total_loss(
-            model,
-            T_D_train["xyt"],
-            T_D_train["D"],
-            T_D_train["u"],
-            T_D_train["v"],
-            T_D_train["S"],
-            T_f,
-            scales=scales,
-        )
+#         history["total"].append(total_loss.item())
+#         history["D"].append(loss_D.item())
+#         history["u"].append(loss_u.item())
+#         history["v"].append(loss_v.item())
+#         history["f"].append(loss_f.item())
 
-        total_loss.backward()
-        optimizer.step()
+#         # --- Validation ---
+#         if (epoch + 1) % print_every == 0 or epoch == 0:
+#             model.eval()
+#             with torch.no_grad():
+#                 D_pred, u_pred, v_pred = model.predict_fields(T_D_test["xyt"])
+#                 val_D = torch.mean((D_pred - T_D_test["D"]) ** 2)
+#                 val_u = torch.mean((u_pred - T_D_test["u"]) ** 2)
+#                 val_v = torch.mean((v_pred - T_D_test["v"]) ** 2)
 
-        history["total"].append(total_loss.item())
-        history["D"].append(loss_D.item())
-        history["u"].append(loss_u.item())
-        history["v"].append(loss_v.item())
-        history["f"].append(loss_f.item())
+#             T_f_grad = T_f.clone().detach().requires_grad_(True)
+#             f_val = loss_fn.pde_residual(model, T_f_grad, S=None, scales=scales)
+#             val_f = torch.mean(f_val ** 2)
 
-        # --- Validation ---
-        if (epoch + 1) % print_every == 0 or epoch == 0:
-            model.eval()
-            with torch.no_grad():
-                D_pred, u_pred, v_pred = model.predict_fields(T_D_test["xyt"])
-                val_D = torch.mean((D_pred - T_D_test["D"]) ** 2)
-                val_u = torch.mean((u_pred - T_D_test["u"]) ** 2)
-                val_v = torch.mean((v_pred - T_D_test["v"]) ** 2)
+#             val_total = (
+#                 loss_fn.lambda_D * val_D
+#                 + loss_fn.lambda_u * val_u
+#                 + loss_fn.lambda_v * val_v
+#                 + loss_fn.lambda_f * val_f
+#             )
 
-            T_f_grad = T_f.clone().detach().requires_grad_(True)
-            f_val = loss_fn.pde_residual(model, T_f_grad, S=None, scales=scales)
-            val_f = torch.mean(f_val ** 2)
+#             history["val_total"].append(val_total.item())
+#             history["val_D"].append(val_D.item())
+#             history["val_u"].append(val_u.item())
+#             history["val_v"].append(val_v.item())
+#             history["val_f"].append(val_f.item())
 
-            val_total = val_D + val_u + val_v + val_f
+#             # Save best model
+#             if val_total.item() < best_val_loss:
+#                 best_val_loss = val_total.item()
+#                 best_epoch = epoch + 1
+#                 torch.save(model.state_dict(), os.path.join(save_dir, "best_model.pt"))
 
-            history["val_total"].append(val_total.item())
-            history["val_D"].append(val_D.item())
-            history["val_u"].append(val_u.item())
-            history["val_v"].append(val_v.item())
-            history["val_f"].append(val_f.item())
+#             pbar.set_postfix({
+#                 "train_total": f"{total_loss.item():.3e}",
+#                 "L_D": f"{loss_D.item():.3e}",
+#                 "L_u": f"{loss_u.item():.3e}",
+#                 "L_v": f"{loss_v.item():.3e}",
+#                 "L_f": f"{loss_f.item():.3e}",
+#                 "val_total": f"{val_total.item():.3e}",
+#                 "val_f": f"{val_f.item():.3e}"
+#             })
 
-            # Save best model
-            if val_total.item() < best_val_loss:
-                best_val_loss = val_total.item()
-                best_epoch = epoch + 1
-                torch.save(model.state_dict(), os.path.join(save_dir, "best_model.pt"))
+#             print(f"[Epoch {epoch+1}/{n_epochs}] "
+#                   f"train_total={total_loss.item():.3e}, "
+#                   f"L_D={loss_D.item():.3e}, L_u={loss_u.item():.3e}, "
+#                   f"L_v={loss_v.item():.3e}, L_f={loss_f.item():.3e}, "
+#                   f"val_total={val_total.item():.3e}, val_f={val_f.item():.3e}")
 
-            pbar.set_postfix({
-                "train_total": f"{total_loss.item():.3e}",
-                "L_D": f"{loss_D.item():.3e}",
-                "L_u": f"{loss_u.item():.3e}",
-                "L_v": f"{loss_v.item():.3e}",
-                "L_f": f"{loss_f.item():.3e}",
-                "val_total": f"{val_total.item():.3e}",
-                "val_f": f"{val_f.item():.3e}"
-            })
+#             model.train()
 
-            print(f"[Epoch {epoch+1}/{n_epochs}] "
-                  f"train_total={total_loss.item():.3e}, "
-                  f"L_D={loss_D.item():.3e}, L_u={loss_u.item():.3e}, "
-                  f"L_v={loss_v.item():.3e}, L_f={loss_f.item():.3e}, "
-                  f"val_total={val_total.item():.3e}, val_f={val_f.item():.3e}")
+#     # === Save final model ===
+#     torch.save(model.state_dict(), os.path.join(save_dir, "final_model.pt"))
 
-            model.train()
+#     # === Reload best model for test prediction ===
+#     model.load_state_dict(torch.load(os.path.join(save_dir, "best_model.pt")))
+#     model.eval()
+#     print(f"\nReloaded best model (epoch {best_epoch}) for test prediction.")
 
-    # === Save final model ===
-    torch.save(model.state_dict(), os.path.join(save_dir, "final_model.pt"))
+#     with torch.no_grad():
+#         D_pred, u_pred, v_pred = model.predict_fields(T_D_test["xyt"])
 
-    # === Reload best model for test prediction ===
-    best_model_path = os.path.join(save_dir, "best_model.pt")
-    model.load_state_dict(torch.load(best_model_path))
-    model.eval()
-    print(f"\nReloaded best model (epoch {best_epoch}) for test prediction.")
+#     preds = {
+#         "D_true": T_D_test["D"].cpu(),
+#         "u_true": T_D_test["u"].cpu(),
+#         "v_true": T_D_test["v"].cpu(),
+#         "D_pred": D_pred.cpu(),
+#         "u_pred": u_pred.cpu(),
+#         "v_pred": v_pred.cpu(),
+#     }
+#     torch.save(preds, os.path.join(save_dir, "test_predictions.pt"))
 
-    with torch.no_grad():
-        D_pred, u_pred, v_pred = model.predict_fields(T_D_test["xyt"])
+#     print("\nTraining completed.")
+#     print(f"Best validation total loss: {best_val_loss:.4e} at epoch {best_epoch}")
 
-    # === Save test predictions ===
-    preds = {
-        "D_true": T_D_test["D"].cpu(),
-        "u_true": T_D_test["u"].cpu(),
-        "v_true": T_D_test["v"].cpu(),
-        "D_pred": D_pred.cpu(),
-        "u_pred": u_pred.cpu(),
-        "v_pred": v_pred.cpu(),
-    }
-    torch.save(preds, os.path.join(save_dir, "test_predictions.pt"))
+#     history["best_epoch"] = best_epoch
+#     torch.save(history, os.path.join(save_dir, "training_history.pt"))
 
-    # Log tensor shapes
-    print("\nSaved test predictions with shapes:")
-    for k, v in preds.items():
-        print(f"  {k}: {tuple(v.shape)}")
+#     return history
 
-    # === Final summary ===
-    print("\nTraining completed.")
-    print("-" * 60)
-    print("Initial losses:")
-    print(f"  L_total: {history['total'][0]:.4e},  "
-          f"L_D: {history['D'][0]:.4e},  "
-          f"L_u: {history['u'][0]:.4e},  "
-          f"L_v: {history['v'][0]:.4e},  "
-          f"L_f: {history['f'][0]:.4e}")
-    print("Final losses:")
-    print(f"  L_total: {history['total'][-1]:.4e},  "
-          f"L_D: {history['D'][-1]:.4e},  "
-          f"L_u: {history['u'][-1]:.4e},  "
-          f"L_v: {history['v'][-1]:.4e},  "
-          f"L_f: {history['f'][-1]:.4e}")
-    print(f"Best validation total loss: {best_val_loss:.4e} at epoch {best_epoch}")
-    print("-" * 60)
-
-    # === Save history and metadata ===
-    history["best_epoch"] = best_epoch
-    history_path = os.path.join(save_dir, "training_history.pt")
-    torch.save(history, history_path)
-
-    print(f"Saved best and final model weights, test predictions, and history to:\n  {save_dir}")
-    print(f"Full log written to: {log_path}")
-    print("=" * 60)
-
-    # Restore stdout
-    sys.stdout.log.close()
-    sys.stdout = sys.stdout.terminal
-
-    return history
