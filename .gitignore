@@ -9,6 +9,7 @@ __pycache__/
 # Project specific stuff
 .vscode
 data/
+run/
 
 # mac crap
 .DS_Store

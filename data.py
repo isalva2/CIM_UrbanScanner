@@ -43,3 +43,8 @@ def read_r3() -> DataFrame:
     df = pd.read_csv(data_path)
     df.reset_index(names="r3_key", inplace=True)
     return df
+
+def read_source_data() -> DataFrame:
+    data_path_source = Path("data/cached/diurnal_mean_long_interpolated_inside_range.csv")
+    data_path_key = Path("data/cached/r3_joined_with_fishent.csv")
+    return pd.read_csv(data_path_source), pd.read_csv(data_path_key)

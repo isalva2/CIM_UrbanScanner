@@ -63,7 +63,7 @@ We can train a neural network (NN) which outputs three observable air and enviro
 Decomposing $\overrightarrow{r}$ into its x and y components and making the assumption that the coefficient of diffusion $K$ is constant, we can obtain a partial derivative equation (PDE) residual function to obtain the physical loss discrepancy:
 
 $$
-\hat{f}(x,y,t) := K((\hat{D}''_{xx})(x,y,t;\theta)+K(\hat{D}''_{yy})(x,y,t;\theta))
+\hat{f}(x,y,t) := K(\hat{D}''_{xx}(x,y,t;\theta)+\hat{D}''_{yy}(x,y,t;\theta))
 \\
 -\hat{D}(x,y,t;\theta)(\hat{u}'_x(x,y,t;\theta)+\hat{v}'_y(x,y,t;\theta))
 \\
